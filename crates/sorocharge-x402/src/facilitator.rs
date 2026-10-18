@@ -664,6 +664,70 @@ mod tests {
         }
     }
 
+    /// A Stellar RPC call failing during validation must surface as exactly
+    /// `RpcFailed`, carrying the underlying reason — not as a payload error.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn maps_a_failing_rpc_call_to_rpc_failed() {
+        let facilitator_signer = TestSigner::from_seed([0x22; 32]);
+        let payer = TestSigner::from_seed([0x33; 32]);
+        let params = charge_params(&payer.address());
+        let request = request_for(&params, &payer);
+
+        let rpc = MockRpc::spawn(CURRENT_LEDGER, ACCOUNT_SEQ_NUM, 100, events_for(&params)).await;
+        rpc.fail_method("getLatestLedger");
+        let rpc_client = stellar_rpc_client::Client::new(&rpc.url).expect("rpc client");
+        let facilitator = Facilitator::new(
+            &rpc_client,
+            &facilitator_signer,
+            NETWORK.to_string(),
+            FacilitatorConfig::default(),
+        );
+
+        match facilitator.validate(&request).await {
+            Err(X402Error::RpcFailed { reason }) => {
+                assert!(
+                    reason.contains("forced getLatestLedger failure"),
+                    "expected the RPC error to be carried back, got {reason:?}"
+                );
+            }
+            other => panic!("expected RpcFailed, got {other:?}"),
+        }
+    }
+
+    /// Verification succeeding but submission failing on the RPC must surface
+    /// as exactly `SettlementFailed`, not `RpcFailed` or a payload error.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn maps_a_failing_submission_to_settlement_failed() {
+        let facilitator_signer = TestSigner::from_seed([0x22; 32]);
+        let payer = TestSigner::from_seed([0x33; 32]);
+        let params = charge_params(&payer.address());
+        let request = request_for(&params, &payer);
+
+        let rpc = MockRpc::spawn(CURRENT_LEDGER, ACCOUNT_SEQ_NUM, 100, events_for(&params)).await;
+        rpc.fail_method("sendTransaction");
+        let rpc_client = stellar_rpc_client::Client::new(&rpc.url).expect("rpc client");
+        let facilitator = Facilitator::new(
+            &rpc_client,
+            &facilitator_signer,
+            NETWORK.to_string(),
+            FacilitatorConfig::default(),
+        );
+
+        match facilitator.settle(&request).await {
+            Err(X402Error::SettlementFailed { reason }) => {
+                assert!(
+                    reason.contains("forced sendTransaction failure"),
+                    "expected the submission error to be carried back, got {reason:?}"
+                );
+            }
+            other => panic!("expected SettlementFailed, got {other:?}"),
+        }
+        assert!(
+            rpc.methods().contains(&"simulateTransaction".to_string()),
+            "verification must have succeeded before submission failed"
+        );
+    }
+
     /// Settlement must rebuild the transaction around the facilitator's own
     /// account, sequence number, and simulation-derived fee — never the
     /// client's all-zeros placeholder values.

@@ -20,6 +20,7 @@
 mod effects;
 mod entry;
 mod error;
+mod network;
 mod sign;
 mod verify;
 
@@ -28,5 +29,6 @@ pub use entry::{
     build_charge_entry, parse_address, Address, ChargeParams, CredentialKind, UnsignedEntry,
 };
 pub use error::SorochargeError;
+pub use network::caip2_for_passphrase;
 pub use sign::{network_id_hash, sign_entry, SignedEntry, Signer};
 pub use verify::{verify_delegated_threshold, verify_entry};

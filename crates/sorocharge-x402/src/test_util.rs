@@ -156,6 +156,7 @@ pub(crate) struct MockRpcState {
     events: Vec<String>,
     methods: Mutex<Vec<String>>,
     submitted: Mutex<Vec<String>>,
+    failing_method: Mutex<Option<String>>,
 }
 
 impl MockRpc {
@@ -175,6 +176,7 @@ impl MockRpc {
             events,
             methods: Mutex::new(Vec::new()),
             submitted: Mutex::new(Vec::new()),
+            failing_method: Mutex::new(None),
         });
         let router = Router::new()
             .route("/", post(handle_rpc))
@@ -195,6 +197,12 @@ impl MockRpc {
     }
 
     /// The JSON-RPC methods the facilitator called, in order.
+    /// Makes every later call to `method` answer with a JSON-RPC error
+    /// instead of its normal result, so tests can exercise RPC failure paths.
+    pub(crate) fn fail_method(&self, method: &str) {
+        *self.state.failing_method.lock().expect("failing lock") = Some(method.to_string());
+    }
+
     pub(crate) fn methods(&self) -> Vec<String> {
         self.state.methods.lock().expect("methods lock").clone()
     }
@@ -222,6 +230,19 @@ async fn handle_rpc(
         .expect("methods lock")
         .push(method.clone());
 
+    let failing = state
+        .failing_method
+        .lock()
+        .expect("failing lock")
+        .as_deref()
+        == Some(method.as_str());
+    if failing {
+        return Json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": { "code": -32000, "message": format!("mock RPC forced {method} failure") }
+        }));
+    }
     let result = match method.as_str() {
         "getLatestLedger" => json!({
             "id": "mock-ledger",

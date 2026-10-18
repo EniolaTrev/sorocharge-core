@@ -1,49 +1,20 @@
 # deny.toml — cargo-deny configuration for vulnerability and license scanning
 
-# Advisory scanning: fail on any new advisory in the dependency tree
-advisories = "warn"
+[advisories]
+version = 2
 
-# License scanning: fail on GPL-incompatible licenses, warn on others
-licenses = "warn"
-
-# Explicitly allow list — any licenses not matched here that are restricted
-# will cause cargo-deny to fail. We allow common permissive licenses.
-allow {
-  # Permissive licenses
-  MIT
-  Apache-2.0
-  BSD-2-Clause
-  BSD-3-Clause
-  BSD-4-Clause
-  Unlicense
-
-  # Stellar/Soroban ecosystem
-  ISC
-}
-
-# Deny list — licenses that are never allowed
-deny {
-  # Copyleft licenses that are incompatible with proprietary use
-  GPL-2.0
-  GPL-2.0+
-  GPL-3.0
-  GPL-3.0+
-  AGPL-3.0
-  AGPL-3.0+
-  LGPL-2.1
-  LGPL-2.1+
-  LGPL-3.0
-  LGPL-3.0+
-}
-
-# Specific advisory exceptions — these are known-good advisories that
-# would otherwise cause cargo-deny to fail. Each needs a reason.
-# Example:
-# exceptions {
-#   "RUSTSEC-2024-0001" = "transitive dependency, not directly used"
-# }
-
-# Ignore advisories from specific sources if needed
-# ignore {
-#   "github.com/rustsec/rustsec: advisory-type" = "reason"
-# }
+[licenses]
+version = 2
+# Permissive licenses plus the Stellar/Soroban ecosystem's ISC.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSD-4-Clause",
+  "Unlicense",
+  "ISC",
+  # Pulled in transitively by the ICU crates and the TLS root-certificate data.
+  "Unicode-3.0",
+  "CDLA-Permissive-2.0",
+]
