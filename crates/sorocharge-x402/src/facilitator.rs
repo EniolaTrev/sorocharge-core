@@ -489,6 +489,41 @@ impl<'a> Facilitator<'a> {
     /// `GET /supported`: advertises `exact` on whichever Stellar network
     /// this facilitator instance was configured for, and its own signer
     /// address.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sorocharge_x402::{Facilitator, FacilitatorConfig};
+    /// use sorocharge_signer::{Address, Signer, SorochargeError};
+    /// use stellar_rpc_client::Client as RpcClient;
+    /// use stellar_xdr::{BytesM, Signature};
+    ///
+    /// struct DummySigner;
+    /// impl Signer for DummySigner {
+    ///     fn address(&self) -> Address {
+    ///         "GCQJVJPUPJTVTABP7FK7RXBNFIKKLSM5EO7JP6DECJ77SOBUKWSPB64N"
+    ///             .parse()
+    ///             .unwrap()
+    ///     }
+    ///     fn sign_preimage(&self, _: &[u8]) -> std::result::Result<[u8; 64], SorochargeError> {
+    ///         Ok([0u8; 64])
+    ///     }
+    /// }
+    ///
+    /// let rpc = RpcClient::new("https://soroban-testnet.stellar.org").unwrap();
+    /// let signer = DummySigner;
+    /// let facilitator = Facilitator::new(
+    ///     &rpc,
+    ///     &signer,
+    ///     "Test SDF Network ; September 2015".to_string(),
+    ///     FacilitatorConfig::default(),
+    /// );
+    ///
+    /// let supported = facilitator.supported();
+    /// assert_eq!(supported.kinds.len(), 1);
+    /// assert_eq!(supported.kinds[0].scheme, "exact");
+    /// assert_eq!(supported.kinds[0].network, "stellar:testnet");
+    /// ```
     #[must_use]
     pub fn supported(&self) -> SupportedResponse {
         let network = caip2_for_passphrase(&self.network_passphrase)
