@@ -314,6 +314,75 @@ impl<'a> Facilitator<'a> {
     }
 
     /// `POST /verify`: read-only validation, per spec §7.1.
+    ///
+    /// # Examples
+    ///
+    /// This example sends an unsupported protocol version, which the
+    /// facilitator rejects before making any RPC request.
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use ed25519_dalek::{Signer as DalekSigner, SigningKey};
+    /// use sorocharge_signer::{Address, SorochargeError, Signer};
+    /// use sorocharge_x402::{Facilitator, FacilitatorConfig, VerifyRequest};
+    /// use stellar_xdr::{AccountId, PublicKey, ScAddress, Uint256};
+    ///
+    /// struct FeePayer(SigningKey);
+    ///
+    /// impl Signer for FeePayer {
+    ///     fn sign_preimage(&self, preimage: &[u8]) -> Result<[u8; 64], SorochargeError> {
+    ///         Ok(self.0.sign(preimage).to_bytes())
+    ///     }
+    ///
+    ///     fn address(&self) -> Address {
+    ///         ScAddress::Account(AccountId(PublicKey::PublicKeyTypeEd25519(Uint256(
+    ///             self.0.verifying_key().to_bytes(),
+    ///         ))))
+    ///     }
+    /// }
+    ///
+    /// let rpc = stellar_rpc_client::Client::new("https://soroban-testnet.stellar.org")?;
+    /// let signer = FeePayer(SigningKey::from_bytes(&[0x22; 32]));
+    /// let facilitator = Facilitator::new(
+    ///     &rpc,
+    ///     &signer,
+    ///     "Test SDF Network ; September 2015".to_string(),
+    ///     FacilitatorConfig::default(),
+    /// );
+    /// let request: VerifyRequest = serde_json::from_str(
+    ///     r#"{
+    ///       "x402Version": 0,
+    ///       "paymentPayload": {
+    ///         "x402Version": 2,
+    ///         "accepted": {
+    ///           "scheme": "exact",
+    ///           "network": "stellar:testnet",
+    ///           "amount": "1500000",
+    ///           "asset": "CAZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGGJH",
+    ///           "payTo": "GCQJVJPUPJTVTABP7FK7RXBNFIKKLSM5EO7JP6DECJ77SOBUKWSPB64N",
+    ///           "maxTimeoutSeconds": 60,
+    ///           "extra": { "areFeesSponsored": true }
+    ///         },
+    ///         "payload": { "transaction": "" }
+    ///       },
+    ///       "paymentRequirements": {
+    ///         "scheme": "exact",
+    ///         "network": "stellar:testnet",
+    ///         "amount": "1500000",
+    ///         "asset": "CAZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGGJH",
+    ///         "payTo": "GCQJVJPUPJTVTABP7FK7RXBNFIKKLSM5EO7JP6DECJ77SOBUKWSPB64N",
+    ///         "maxTimeoutSeconds": 60,
+    ///         "extra": { "areFeesSponsored": true }
+    ///       }
+    ///     }"#,
+    /// )?;
+    ///
+    /// let response = facilitator.verify(&request).await?;
+    /// assert!(!response.is_valid);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn verify(&self, request: &VerifyRequest) -> Result<VerifyResponse, X402Error> {
         match self.validate(request).await {
             Ok((_, _, params)) => Ok(VerifyResponse {
