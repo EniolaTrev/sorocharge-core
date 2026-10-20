@@ -334,6 +334,65 @@ impl<'a> Facilitator<'a> {
     /// transaction with the facilitator as source account, re-simulates to
     /// derive a fresh fee and resource footprint, signs, submits, and polls
     /// for confirmation.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sorocharge_signer::{Address, Signer, SorochargeError};
+    /// use sorocharge_x402::{Facilitator, FacilitatorConfig, SettleRequest, StellarExtra, PaymentPayload, PaymentRequirements, StellarPayload};
+    ///
+    /// struct FeePayer {
+    ///     address: Address,
+    /// }
+    ///
+    /// impl Signer for FeePayer {
+    ///     fn sign_preimage(&self, preimage: &[u8]) -> Result<[u8; 64], SorochargeError> {
+    ///         Ok([0u8; 64])
+    ///     }
+    ///
+    ///     fn address(&self) -> Address {
+    ///         self.address.clone()
+    ///     }
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let rpc = stellar_rpc_client::Client::new("https://soroban-testnet.stellar.org:443")?;
+    ///     let signer = FeePayer {
+    ///         address: "GDIEVMRSOQV3JKZ2CNUL2RQV4TTNAISKW4NAC25PQUQKGMWJO6DTOAE7".parse()?,
+    ///     };
+    ///     let facilitator = Facilitator::new(
+    ///         &rpc,
+    ///         &signer,
+    ///         "Test SDF Network ; September 2015".to_string(),
+    ///         FacilitatorConfig::default(),
+    ///     );
+    ///
+    ///     let requirements = PaymentRequirements {
+    ///         scheme: "exact".to_string(),
+    ///         network: "stellar:testnet".to_string(),
+    ///         amount: "42000000".to_string(),
+    ///         asset: "CAZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGGJH".to_string(),
+    ///         pay_to: "GCQJVJPUPJTVTABP7FK7RXBNFIKKLSM5EO7JP6DECJ77SOBUKWSPB64N".to_string(),
+    ///         max_timeout_seconds: 60,
+    ///         extra: StellarExtra { are_fees_sponsored: true },
+    ///     };
+    ///     let request = SettleRequest {
+    ///         x402_version: 2,
+    ///         payment_payload: PaymentPayload {
+    ///             x402_version: 2,
+    ///             resource: None,
+    ///             accepted: requirements.clone(),
+    ///             payload: StellarPayload { transaction: "AAAAAgAAAAA=".to_string() },
+    ///             extensions: serde_json::Map::new(),
+    ///         },
+    ///         payment_requirements: requirements,
+    ///     };
+    ///
+    ///     let _response = facilitator.settle(&request).await;
+    ///     Ok(())
+    /// }
+    /// ```
     pub async fn settle(&self, request: &SettleRequest) -> Result<SettlementResponse, X402Error> {
         let network = request.payment_requirements.network.clone();
         let (tx, _auth_entry, params) = match self.validate(request).await {
