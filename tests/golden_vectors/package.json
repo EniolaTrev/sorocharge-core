@@ -4,9 +4,14 @@
   "description": "Generates golden-vector fixtures from the pinned @stellar/stellar-sdk, diffed against sorocharge-signer's Rust output in CI",
   "type": "module",
   "scripts": {
+    "lint": "eslint generate.mjs",
+    "format:check": "prettier --check generate.mjs eslint.config.js .prettierrc.json package.json",
     "generate": "node generate.mjs"
   },
   "devDependencies": {
-    "@stellar/stellar-sdk": "17.2.0"
+    "@eslint/js": "10.0.1",
+    "@stellar/stellar-sdk": "17.2.0",
+    "eslint": "10.13.0",
+    "prettier": "3.9.10"
   }
 }

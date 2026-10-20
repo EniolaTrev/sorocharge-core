@@ -1,5 +1,8 @@
 # sorocharge-core
 
+[![CI](https://github.com/sorocharge/sorocharge-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sorocharge/sorocharge-core/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+
 Rust crates for building, signing, and verifying Soroban authorization
 entries that pay for things — one signing engine, two HTTP payment
 protocols on top of it: **[x402](https://github.com/x402-foundation/x402)**

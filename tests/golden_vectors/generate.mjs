@@ -117,7 +117,8 @@ function buildDelegatedEntry() {
   ];
 
   const entryWithoutDelegates = new xdr.SorobanAuthorizationEntry({
-    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(addressCredentials),
+    credentials:
+      xdr.SorobanCredentials.sorobanCredentialsAddress(addressCredentials),
     rootInvocation: buildTransferInvocation(amount),
   });
 
@@ -127,7 +128,11 @@ function buildDelegatedEntry() {
     delegates,
   });
 
-  return { entry, delegateA: delegateAKeypair.publicKey(), delegateB: delegateBKeypair.publicKey() };
+  return {
+    entry,
+    delegateA: delegateAKeypair.publicKey(),
+    delegateB: delegateBKeypair.publicKey(),
+  };
 }
 
 function buildManyDelegatesEntry() {
@@ -157,7 +162,8 @@ function buildManyDelegatesEntry() {
   ];
 
   const entryWithoutDelegates = new xdr.SorobanAuthorizationEntry({
-    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(addressCredentials),
+    credentials:
+      xdr.SorobanCredentials.sorobanCredentialsAddress(addressCredentials),
     rootInvocation: buildTransferInvocation(amount),
   });
 
@@ -167,10 +173,18 @@ function buildManyDelegatesEntry() {
     delegates,
   });
 
-  return { entry, delegateSigners: delegates.map((delegate) => delegate.address) };
+  return {
+    entry,
+    delegateSigners: delegates.map((delegate) => delegate.address),
+  };
 }
 
-function writeFixture(name, entry, extra = {}, xdrField = "unsigned_entry_xdr_base64") {
+function writeFixture(
+  name,
+  entry,
+  extra = {},
+  xdrField = "unsigned_entry_xdr_base64",
+) {
   // `extra.amount` (a BigInt) overrides the module-level default amount;
   // it must be stringified here because JSON.stringify cannot serialize a
   // BigInt, and is pulled out of `extra` before the spread below.

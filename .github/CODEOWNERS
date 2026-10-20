@@ -1,0 +1,7 @@
+# Default maintainer review for repository-wide changes.
+* @ciscokwiz
+
+# Crate owners; keep these explicit so ownership remains clear per crate.
+/crates/sorocharge-signer/ @ciscokwiz
+/crates/sorocharge-x402/ @ciscokwiz
+/crates/sorocharge-mpp/ @ciscokwiz
