@@ -41,6 +41,20 @@ pub const MIN_INCLUSION_BUFFER_STROOPS: i64 = 100;
 /// Facilitator configuration: the fee-safety ceiling and inclusion buffer
 /// the spec makes an operator-configurable circuit breaker rather than a
 /// protocol constant.
+///
+/// # Examples
+///
+/// ```rust
+/// use sorocharge_x402::FacilitatorConfig;
+///
+/// let config = FacilitatorConfig {
+///     max_transaction_fee_stroops: 100_000,
+///     inclusion_buffer_stroops: 200,
+/// };
+///
+/// assert_eq!(config.max_transaction_fee_stroops, 100_000);
+/// assert_eq!(config.inclusion_buffer_stroops, 200);
+/// ```
 #[derive(Debug, Clone)]
 pub struct FacilitatorConfig {
     pub max_transaction_fee_stroops: i64,
@@ -76,6 +90,41 @@ pub struct Facilitator<'a> {
 impl<'a> Facilitator<'a> {
     /// `signer` is the facilitator's own fee-paying key: the account that
     /// becomes every settled transaction's source account.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use sorocharge_signer::{Address, Signer, SorochargeError};
+    /// use sorocharge_x402::{Facilitator, FacilitatorConfig};
+    ///
+    /// struct FeePayer {
+    ///     address: Address,
+    /// }
+    ///
+    /// impl Signer for FeePayer {
+    ///     fn sign_preimage(&self, preimage: &[u8]) -> Result<[u8; 64], SorochargeError> {
+    ///         todo!("ed25519-sign the sha256 preimage with this fee-paying key")
+    ///     }
+    ///
+    ///     fn address(&self) -> Address {
+    ///         self.address.clone()
+    ///     }
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let rpc: stellar_rpc_client::Client = todo!("a Stellar RPC client pointed at your endpoint");
+    /// # let signer = FeePayer {
+    /// #     address: "GDIEVMRSOQV3JKZ2CNUL2RQV4TTNAISKW4NAC25PQUQKGMWJO6DTOAE7".parse()?,
+    /// # };
+    /// let facilitator = Facilitator::new(
+    ///     &rpc,
+    ///     &signer,
+    ///     "Test SDF Network ; September 2015".to_string(),
+    ///     FacilitatorConfig::default(),
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn new(
         rpc: &'a stellar_rpc_client::Client,
@@ -213,6 +262,12 @@ impl<'a> Facilitator<'a> {
             .max_timeout_seconds
             .div_ceil(DEFAULT_ESTIMATED_LEDGER_SECONDS);
         let valid_until_ledger =
+            // max_timeout_ledgers is the result of dividing max_timeout_seconds by
+            // 5 (estimated ledger seconds). The result fits in u32 because even
+            // very large timeout values (e.g. 2^31-1 seconds / 5 ≈ 4e8) still
+            // produce a value that fits, but we defensively cap at u32::MAX
+            // rather than error out, since the downstream verify_entry check
+            // against valid_until_ledger will still catch any genuine overflow.
             current_ledger.saturating_add(u32::try_from(max_timeout_ledgers).unwrap_or(u32::MAX));
 
         let params = ChargeParams {
@@ -365,6 +420,14 @@ impl<'a> Facilitator<'a> {
 
         let fee = i64::try_from(simulation.min_resource_fee)
             .unwrap_or(i64::MAX)
+            // simulation.min_resource_fee is u64; i64::MAX is 9.2e18 while
+            // u64::MAX is 1.8e19, so the conversion can lose the top bit.
+            // However, realistic Stellar resource fees are always orders of
+            // magnitude below this ceiling. The unwrap_or(i64::MAX) ensures we
+            // never silently saturate to a wrong value; instead we get i64::MAX
+            // which will then fail the fee > ceiling check (since 2^63-1 > 50_000),
+            // causing the settlement to be refused rather than submitting a
+            // transaction with a spuriously high fee.
             .saturating_add(self.config.inclusion_buffer_stroops);
         if fee > self.config.max_transaction_fee_stroops {
             return Err(X402Error::FeeExceedsCeiling {
@@ -383,7 +446,13 @@ impl<'a> Facilitator<'a> {
         let final_tx = rebuild_for_settlement(
             &tx,
             facilitator_account_id,
-            u32::try_from(fee).unwrap_or(u32::MAX),
+            u32::try_from(fee).unwrap_or(u32::MAX), // fee is i64 from the simulation + inclusion buffer. u32::MAX is
+            // 4.3e9 stroops (~0.039 XLM). Real Stellar fees are typically
+            // < 10_000 stroops. unwrap_or(u32::MAX) ensures we never silently
+            // saturate a fee that's genuinely too high; the FeeExceedsCeiling
+            // check above will already have refused such cases. If fee somehow
+            // exceeds u32::MAX (extremely unlikely), the transaction won't be
+            // submited with an maximal fee rather than erroring out of band.
             next_seq_num,
             TransactionExt::V1(soroban_data),
         );
@@ -420,6 +489,41 @@ impl<'a> Facilitator<'a> {
     /// `GET /supported`: advertises `exact` on whichever Stellar network
     /// this facilitator instance was configured for, and its own signer
     /// address.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sorocharge_x402::{Facilitator, FacilitatorConfig};
+    /// use sorocharge_signer::{Address, Signer, SorochargeError};
+    /// use stellar_rpc_client::Client as RpcClient;
+    /// use stellar_xdr::{BytesM, Signature};
+    ///
+    /// struct DummySigner;
+    /// impl Signer for DummySigner {
+    ///     fn address(&self) -> Address {
+    ///         "GCQJVJPUPJTVTABP7FK7RXBNFIKKLSM5EO7JP6DECJ77SOBUKWSPB64N"
+    ///             .parse()
+    ///             .unwrap()
+    ///     }
+    ///     fn sign_preimage(&self, _: &[u8]) -> std::result::Result<[u8; 64], SorochargeError> {
+    ///         Ok([0u8; 64])
+    ///     }
+    /// }
+    ///
+    /// let rpc = RpcClient::new("https://soroban-testnet.stellar.org").unwrap();
+    /// let signer = DummySigner;
+    /// let facilitator = Facilitator::new(
+    ///     &rpc,
+    ///     &signer,
+    ///     "Test SDF Network ; September 2015".to_string(),
+    ///     FacilitatorConfig::default(),
+    /// );
+    ///
+    /// let supported = facilitator.supported();
+    /// assert_eq!(supported.kinds.len(), 1);
+    /// assert_eq!(supported.kinds[0].scheme, "exact");
+    /// assert_eq!(supported.kinds[0].network, "stellar:testnet");
+    /// ```
     #[must_use]
     pub fn supported(&self) -> SupportedResponse {
         let network = caip2_for_passphrase(&self.network_passphrase)

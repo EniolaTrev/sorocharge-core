@@ -263,6 +263,41 @@ pub struct PaymentRequirements {
 
 /// The `402 Payment Required` response body, carried base64-encoded in the
 /// `PAYMENT-REQUIRED` header.
+///
+/// # Examples
+///
+/// ```rust
+/// use sorocharge_x402::PaymentRequired;
+///
+/// let json = r#"
+/// {
+///   "x402Version": 2,
+///   "resource": {
+///     "url": "https://example.com/weather",
+///     "description": "Access to protected content",
+///     "mimeType": "application/json"
+///   },
+///   "accepts": [
+///     {
+///       "scheme": "exact",
+///       "network": "stellar:testnet",
+///       "amount": "10000000",
+///       "asset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+///       "payTo": "GBHEGW3KWOY2OFH767EDALFGCUTBOEVBDQMCKU4APMDLQNBW5QV3W3KO",
+///       "maxTimeoutSeconds": 60,
+///       "extra": {
+///         "areFeesSponsored": true
+///       }
+///     }
+///   ]
+/// }
+/// "#;
+///
+/// let payment_required: PaymentRequired = serde_json::from_str(json).unwrap();
+/// assert_eq!(payment_required.x402_version, 2);
+/// assert_eq!(payment_required.resource.url, "https://example.com/weather");
+/// assert_eq!(payment_required.accepts.len(), 1);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaymentRequired {

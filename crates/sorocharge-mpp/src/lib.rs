@@ -23,15 +23,7 @@ mod test_util;
 pub use client::MppClient;
 pub use error::MppError;
 pub use server::{MppServer, MppServerConfig};
-pub use types::{Challenge, ChargeRequest, Credential, MethodDetails, Payload, Receipt};
-
-/// Internal wire-format entry points exposed on a public path solely so this
-/// crate's out-of-workspace `fuzz/` cargo-fuzz target can reach them.
-///
-/// Gated behind the `fuzzing` feature, which no normal dependent enables, so
-/// the crate's default public surface is unaffected.
-#[cfg(feature = "fuzzing")]
-#[doc(hidden)]
-pub mod fuzzing {
-    pub use crate::tx::{parse_payment_transaction, TransferArgs};
-}
+pub use types::{
+    Challenge, ChargeRequest, Credential, MethodDetails, Payload, Receipt, MAX_DESCRIPTION_LEN,
+    MAX_REALM_LEN,
+};

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributor guide
+    url: https://github.com/sorocharge/sorocharge-core/blob/main/docs/src/contributing.md
+    about: Read the contributor guide before opening an issue.

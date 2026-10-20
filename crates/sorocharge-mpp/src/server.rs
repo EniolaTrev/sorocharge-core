@@ -343,6 +343,12 @@ impl<'a> MppServer<'a> {
             .unwrap_or(DEFAULT_CHALLENGE_EXPIRY_SECONDS);
         let ledger_timeout = seconds_until_expiry.div_ceil(DEFAULT_ESTIMATED_LEDGER_SECONDS);
         let valid_until_ledger =
+            // ledger_timeout is the result of dividing seconds_until_expiry by 5
+            // (estimated ledger seconds). The result should fit in u32 for
+            // any reasonable expiry (even 2^31 seconds / 5 ≈ 4e8), but we
+            // defensively cap at u32::MAX rather than error out, since the
+            // downstream verify_entry check against valid_until_ledger will
+            // catch any genuine overflow.
             current_ledger.saturating_add(u32::try_from(ledger_timeout).unwrap_or(u32::MAX));
 
         let params = ChargeParams {
@@ -432,6 +438,14 @@ impl<'a> MppServer<'a> {
             let next_seq = stellar_xdr::SequenceNumber(account.seq_num.0 + 1);
             let fee = i64::try_from(simulation.min_resource_fee)
                 .unwrap_or(i64::MAX)
+                // simulation.min_resource_fee is u64; i64::MAX is 9.2e18 while
+                // u64::MAX is 1.8e19, so the conversion can lose the top bit.
+                // However, realistic Stellar resource fees are always orders of
+                // magnitude below this ceiling. The unwrap_or(i64::MAX) ensures we
+                // never silently saturate to a wrong value; instead we get i64::MAX
+                // which will then fail the fee > ceiling check (since 2^63-1 > 50_000),
+                // causing the settlement to be refused rather than submitting a
+                // transaction with a spuriously high fee.
                 .saturating_add(self.config.inclusion_buffer_stroops);
             if fee > self.config.max_transaction_fee_stroops {
                 return Err(MppError::VerificationFailed {

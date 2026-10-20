@@ -40,6 +40,43 @@ fn i128_from_scval(value: &ScVal) -> Option<i128> {
 /// Contract transfer; it's verified against a real testnet transaction in
 /// this crate's tests.
 ///
+/// # Examples
+///
+/// ```rust
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct Fixture {
+///     asset_contract: String,
+///     payer: String,
+///     recipient: String,
+///     amount: String,
+///     diagnostic_events_xdr_base64: Vec<String>,
+/// }
+///
+/// let fixture: Fixture = serde_json::from_str(include_str!(
+///     concat!(
+///         env!("CARGO_MANIFEST_DIR"),
+///         "/../../tests/golden_vectors/fixtures/sac_native_transfer_events.json"
+///     )
+/// ))
+/// .unwrap();
+///
+/// let asset = fixture.asset_contract.parse().unwrap();
+/// let payer = fixture.payer.parse().unwrap();
+/// let recipient = fixture.recipient.parse().unwrap();
+/// let amount = fixture.amount.parse().unwrap();
+///
+/// sorocharge_signer::verify_transfer_effects(
+///     &fixture.diagnostic_events_xdr_base64,
+///     &asset,
+///     &payer,
+///     &recipient,
+///     amount,
+/// )
+/// .unwrap();
+/// ```
+///
 /// # Errors
 ///
 /// - [`SorochargeError::SimulationEventsMalformed`] if an event does not

@@ -6,6 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Shared engine for building, signing, and verifying Soroban authorization entries for SEP-41 transfers"
+keywords = ["stellar", "soroban", "sep-41", "payments", "cryptography"]
+categories = ["cryptography", "finance", "network-programming", "authentication"]
 
 [dependencies]
 stellar-xdr = { workspace = true }

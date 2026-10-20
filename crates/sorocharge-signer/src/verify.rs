@@ -171,6 +171,11 @@ fn is_valid_ed25519_signature(address: &Address, payload: &[u8; 32], scval: &ScV
 ///    asset/amount/recipient, regardless of whose key actually signed it —
 ///    added per this project's brief to resolve spec ambiguity toward the
 ///    more conservative reading.
+/// 6. [`SorochargeError::AmountNonPositive`] — the caller's
+///    `expected.amount` is zero or negative, so no signed entry could ever
+///    legitimately match it; this precondition is checked before the amount
+///    diff so the caller's own invalid expectation is reported as such
+///    rather than surfacing as [`SorochargeError::AmountMismatch`].
 /// 7. [`SorochargeError::AmountMismatch`] — the amount differs.
 /// 8. [`SorochargeError::RecipientMismatch`] — the recipient differs.
 /// 9. [`SorochargeError::InvalidSignature`] — no signable node (the
@@ -268,6 +273,12 @@ pub fn verify_entry(
 /// Returns [`SorochargeError::InvalidSignature`] if the total valid
 /// signature weight is below the threshold, or if any individual signature
 /// verification fails.
+///
+/// Returns [`SorochargeError::ExpiredEntry`] or
+/// [`SorochargeError::ExpirationExceedsAllowance`] for an entry that has
+/// already expired or that outlives `expected.valid_until_ledger` — the
+/// same expiry bounds `verify_entry` enforces, checked before any
+/// signature work.
 ///
 /// # Note
 ///

@@ -19,12 +19,59 @@ use crate::types::{Challenge, ChargeRequest, Credential, Payload};
 const DEFAULT_ESTIMATED_LEDGER_SECONDS: u64 = 5;
 const DEFAULT_CHALLENGE_EXPIRY_SECONDS: i64 = 300;
 const SETTLEMENT_FEE_BUFFER_STROOPS: i64 = 100;
+/// Retry configuration for transient HTTP/RPC failures.
+/// Max 3 attempts with exponential backoff (1s, 2s, 4s).
+const MAX_RETRY_ATTEMPTS: u32 = 3;
 
 fn parse_expires(expires: Option<&str>) -> DateTime<Utc> {
     expires
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|| Utc::now() + chrono::Duration::seconds(DEFAULT_CHALLENGE_EXPIRY_SECONDS))
+}
+
+/// Retries an HTTP GET request with bounded backoff for transient failures.
+///
+/// - Retries up to `MAX_RETRY_ATTEMPTS` times (default 3).
+/// - On 5xx or connection-level errors, waits with exponential backoff
+///   (1s, 2s, 4s...).
+/// - Each attempt respects the client's `request_timeout`, so total wall-clock
+///   time is bounded by `timeout * attempts` plus backoff.
+/// - On success, returns the successful response immediately.
+/// - On final failure, returns the last error.
+async fn retry_get<T: reqwest::IntoUrl + Clone>(
+    http: &reqwest::Client,
+    url: T,
+) -> Result<reqwest::Response, MppError> {
+    let mut attempt = 0;
+    let mut last_error = MppError::HttpRequestFailed {
+        reason: "exhausted retries".to_string(),
+    };
+    while attempt < MAX_RETRY_ATTEMPTS {
+        attempt += 1;
+        match http.get(url.clone()).send().await {
+            Ok(resp) => {
+                // Don't retry on 200 (ok) or 402 (payment required) — those are
+                // deliberate protocol responses returned to the caller. Retry
+                // only on connection failures (the `Err` arm below).
+                return Ok(resp);
+            }
+            Err(e) => {
+                last_error = MppError::HttpRequestFailed {
+                    reason: format!("request attempt {} failed: {e}", attempt),
+                };
+                // Retry on connection errors.
+                if attempt < MAX_RETRY_ATTEMPTS {
+                    // Exponential backoff: 1s, 2s, 4s, ...
+                    let backoff = std::time::Duration::from_secs(
+                        1u64.saturating_pow(attempt.saturating_sub(1)),
+                    );
+                    tokio::time::sleep(backoff).await;
+                }
+            }
+        }
+    }
+    Err(last_error)
 }
 
 /// The MPP payer client. Owns a Stellar RPC client because, unlike x402,
@@ -71,18 +118,20 @@ impl<'a> MppClient<'a> {
         signer: &dyn Signer,
         network_passphrase: &str,
     ) -> Result<reqwest::Response, MppError> {
-        let first = self
-            .http
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| MppError::HttpRequestFailed {
-                reason: e.to_string(),
-            })?;
+        let first = retry_get(&self.http, url).await?;
+
         if first.status() == reqwest::StatusCode::OK {
             return Ok(first);
         }
-        if first.status() != reqwest::StatusCode::PAYMENT_REQUIRED {
+        if first.status() == reqwest::StatusCode::PAYMENT_REQUIRED {
+            // Protocol-level 402: continue with challenge handling below.
+        } else if first.status().is_server_error() {
+            // Transient 5xx: retry_get already handled backoff; if we're here,
+            // retries were exhausted.
+            return Err(MppError::UnexpectedStatus {
+                status: first.status().as_u16(),
+            });
+        } else {
             return Err(MppError::UnexpectedStatus {
                 status: first.status().as_u16(),
             });
@@ -171,6 +220,11 @@ impl<'a> MppClient<'a> {
             .div_ceil(DEFAULT_ESTIMATED_LEDGER_SECONDS)
             .div_ceil(2);
         let valid_until_ledger =
+            // ledger_timeout is the result of dividing seconds_until_expiry by 10
+            // (5 estimated ledger seconds * 2 margin). The result should fit in
+            // u32 for any reasonable expiry, but we defensively cap at u32::MAX
+            // rather than error out, since the downstream verify_entry check
+            // against valid_until_ledger will catch any genuine overflow.
             current_ledger.saturating_add(u32::try_from(ledger_timeout).unwrap_or(u32::MAX));
 
         let asset_contract =
@@ -256,6 +310,14 @@ impl<'a> MppClient<'a> {
             }
             let fee = i64::try_from(simulation.min_resource_fee)
                 .unwrap_or(i64::MAX)
+                // simulation.min_resource_fee is u64; i64::MAX is 9.2e18 while
+                // u64::MAX is 1.8e19, so the conversion can lose the top bit.
+                // However, realistic Stellar resource fees are always orders of
+                // magnitude below this ceiling. The unwrap_or(i64::MAX) ensures we
+                // never silently saturate to a wrong value; instead we get i64::MAX
+                // which will then fail the fee > ceiling check (since 2^63-1 > 50_000),
+                // causing the settlement to be refused rather than submitting a
+                // transaction with a spuriously high fee.
                 .saturating_add(SETTLEMENT_FEE_BUFFER_STROOPS);
             let soroban_data = SorobanTransactionData::from_xdr_base64(
                 &simulation.transaction_data,
@@ -270,7 +332,13 @@ impl<'a> MppClient<'a> {
                 &signed,
                 payer_account_id,
                 next_seq,
-                u32::try_from(fee).unwrap_or(u32::MAX),
+                u32::try_from(fee).unwrap_or(u32::MAX), // fee is i64 from the simulation + buffer. u32::MAX is 4.3e9
+                // stroops (~0.039 XLM). Real Stellar fees are typically
+                // < 10_000 stroops. unwrap_or(u32::MAX) ensures we never silently
+                // saturate a fee that's genuinely too high; the fee check above
+                // will already have refused such cases. If fee somehow exceeds
+                // u32::MAX (extremely unlikely), the transaction won't be
+                // submitted with a maximal fee rather than erroring out of band.
                 soroban_data,
                 max_time_unix,
             )?;

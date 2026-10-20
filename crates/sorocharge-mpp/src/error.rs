@@ -5,7 +5,7 @@ use sorocharge_signer::SorochargeError;
 /// Every failure `sorocharge-mpp` can produce, on either the client or
 /// server side. Each variant names one specific, actionable failure — no
 /// bare `String` or `anyhow::Error` at this boundary, and no catch-all.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MppError {
     /// The underlying HTTP request itself failed.
     HttpRequestFailed {

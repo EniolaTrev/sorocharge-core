@@ -5,7 +5,7 @@ use sorocharge_signer::SorochargeError;
 /// Every failure `sorocharge-x402` can produce, on either the client or the
 /// facilitator side. Each variant names one specific, actionable failure —
 /// no bare `String` or `anyhow::Error` at this boundary, and no catch-all.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum X402Error {
     /// The underlying HTTP request itself failed (connection, TLS, timeout).
     HttpRequestFailed { reason: String },
