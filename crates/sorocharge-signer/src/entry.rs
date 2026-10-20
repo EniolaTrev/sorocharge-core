@@ -143,6 +143,30 @@ pub enum CredentialKind {
 /// The credentials' `signature` field is the empty-vector placeholder
 /// (`ScVal::Vec(Some(ScVec(..)))` with no elements) that `sign_entry` fills
 /// in, matching the shape the reference SDK builds prior to signing.
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// use sorocharge_signer::{build_charge_entry, parse_address, ChargeParams, CredentialKind};
+/// use stellar_xdr::SorobanCredentials;
+///
+/// let params = ChargeParams {
+///     asset_contract: parse_address("CAZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGGJH")?,
+///     amount: 1_500_000,
+///     payer: parse_address("GDIEVMRSOQV3JKZ2CNUL2RQV4TTNAISKW4NAC25PQUQKGMWJO6DTOAE7")?,
+///     recipient: parse_address("GCQJVJPUPJTVTABP7FK7RXBNFIKKLSM5EO7JP6DECJ77SOBUKWSPB64N")?,
+///     valid_until_ledger: 100_000,
+/// };
+///
+/// let unsigned = build_charge_entry(&params, CredentialKind::AddressV2)?;
+/// assert!(matches!(
+///     &unsigned.as_xdr().credentials,
+///     SorobanCredentials::AddressV2(_)
+/// ));
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnsignedEntry(pub(crate) SorobanAuthorizationEntry);
 
