@@ -1,0 +1,13 @@
+{
+  "_comment": "Exact tracked file paths pre-vetted to use a function scripts/malware_scan.py otherwise treats as a hard-fail signal (process spawning, dynamic code execution), and why. Adding a new entry here is itself a security-relevant change: review the file's actual use of the flagged call before allowlisting it, the same way you would for any other change to security/.",
+  "exec_functions": [
+    {
+      "path": "scripts/create_wave_issues.py",
+      "reason": "subprocess.run(['gh', ...]) only — shells out to the GitHub CLI to create/list issues, no user-controlled command construction."
+    },
+    {
+      "path": "scripts/backfill_complexity_labels.py",
+      "reason": "subprocess.run(['gh', ...]) only — same as above, for label backfill."
+    }
+  ]
+}

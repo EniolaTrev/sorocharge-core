@@ -84,6 +84,67 @@ jobs:
       - name: Run golden-vector tests
         run: cargo test --workspace -- golden_vector
 
+  malware-scan:
+    # Runs on every PR and push, same as build-test/deny/golden-vectors — not
+    # gated behind schedule/workflow_dispatch like fuzz is, since this check
+    # is fast and has no flaky external dependency of its own (the IOC scan
+    # is pure local pattern-matching; ClamAV's signature update is allowed to
+    # fail soft without blocking, see below).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure origin/main is available for the protected-files diff check
+        run: git fetch origin main:refs/remotes/origin/main || true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: IOC and heuristic scan (security/malware_iocs.json + generic checks)
+        id: ioc_scan
+        continue-on-error: true
+        run: python3 scripts/malware_scan.py
+
+      - name: Install ClamAV
+        run: sudo apt-get update -qq && sudo apt-get install -y clamav clamav-freshclam
+
+      - name: Update ClamAV signatures
+        # Best-effort: ClamAV's mirror infrastructure is a known source of
+        # CI flakiness unrelated to anything in this PR. A stale/missing DB
+        # is handled explicitly below, not by silently skipping the scan.
+        continue-on-error: true
+        run: |
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam --quiet
+
+      - name: ClamAV scan (broader, signature-based detection)
+        run: |
+          set +e
+          clamscan -r --infected \
+            --exclude-dir='(^|/)\.git($|/)' \
+            --exclude-dir='(^|/)target($|/)' \
+            --exclude-dir='(^|/)node_modules($|/)' \
+            --exclude-dir='(^|/)vendor($|/)' \
+            .
+          code=$?
+          if [ "$code" -eq 1 ]; then
+            echo "::error::ClamAV found infected file(s) — see output above."
+            exit 1
+          elif [ "$code" -eq 2 ]; then
+            echo "::warning::ClamAV scan errored (e.g. signature DB unavailable) rather than finding malware — not blocking on this alone, but investigate."
+          fi
+          exit 0
+
+      - name: Fail the job if the IOC/heuristic scan found something
+        if: steps.ioc_scan.outcome == 'failure'
+        run: |
+          echo "::error::IOC/heuristic malware scan failed — see the scan step above for details."
+          exit 1
+
   fuzz:
     # Fuzzing needs nightly Rust and a long time budget, so it runs on the
     # nightly schedule (or a manual dispatch) instead of blocking every PR.
